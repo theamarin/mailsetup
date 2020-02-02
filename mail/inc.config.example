@@ -1,0 +1,16 @@
+#!/bin/bash
+
+# Where ssh should connect to to setup the mail server (host or IP address)
+sshhost="127.0.0.1"
+# The host name of the server inside the domain
+hostname="mail"
+# The primary domain that the mail server will serve
+domain="example.com"
+# Additional domains that should be handled by the mail server, separated by colon (:)
+add_domains="example.net:example.org"
+# The fully qualified domain name (fqdn) is usually made up of the hostname and the domain
+fqdn="$hostname.$domain"
+# A password to connect to the mysql database "vmail"
+vmailpasswd="<fancy password>"
+# A directory on the remote side where intermediate configuration files are uploaded to
+resdir="/root/setup"

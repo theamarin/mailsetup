@@ -1,0 +1,42 @@
+#!/bin/bash
+set -e
+
+
+# Gather domains
+certdomains=""
+IFS=':' read -ra ADDR <<< "$domain:$add_domains"
+for i in "${ADDR[@]}"; do
+   certdomains="$certdomains -d mail.$i -d imap.$i -d smtp.$i"
+done
+echo "Will register:$certdomains."
+
+echo "Install certbot ..."
+apt-get --yes install certbot
+
+echo "Request certificates ..."
+if certbot certonly --standalone --non-interactive --expand --keep-until-expiring --agree-tos --rsa-key-size 4096 -m postmaster@${domain} $certdomains; then
+   echo " * Success."
+else
+   echo " * Error, letsencrypt.log:"
+   cat /var/log/letsencrypt/letsencrypt.log
+   exit 1
+fi
+
+echo "Received certificates:"
+certbot certificates
+
+echo "Write out current crontab ..."
+if ! crontab -l > mycron; then
+   echo " * Crontab was empty."
+   printf "" > mycron
+fi
+echo "Add cronjob ..."
+if grep -q "certbot" mycron; then
+   echo " * certbot already in crontab, done."
+else
+   echo " * certbot not yet in crontab, adding ..."
+   echo '@weekly certbot renew --renew-hook "systemctl reload dovecot; systemctl reload postfix" --quiet' >> mycron
+   crontab mycron
+fi
+echo "Current crontab:"
+crontab -l

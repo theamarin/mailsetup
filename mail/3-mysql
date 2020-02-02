@@ -1,0 +1,39 @@
+#!/bin/bash
+set -e
+
+echo "Setup mysql ..."
+apt-get install --yes mariadb-server
+
+if mysqlshow vmail > /dev/null; then
+   echo "Database vmail already exists, skipping."
+else
+   echo "Database vmail not found, creating ..."
+   mysql --execute="create database vmail CHARACTER SET 'utf8';"
+   echo "grant select on vmail.* to 'vmail'@'localhost' identified by '" "$vmailpasswd" "';" | mysql
+fi
+echo "Add tables if not exist ..."
+if mysql --database="vmail" < $resdir/create-tables.txt
+then
+   echo "Added tables."
+else
+   echo "Failed to add tables!"
+   exit 1
+fi
+
+if mysqlshow vmail; then
+   echo "Database ok."
+else
+   echo "Failed to create database."
+   exit 1
+fi
+
+echo "Add domains to mysql ..."
+IFS=':' read -ra ADDR <<< "$domain:$add_domains"
+for i in "${ADDR[@]}"; do
+   echo "  * Adding $i ..."
+   cat <<-EOF | mysql --database=vmail
+      INSERT INTO domains (domain) VALUES ('$i')
+      ON DUPLICATE KEY UPDATE domain='$i';
+EOF
+done
+echo 'SELECT * FROM domains;' | mysql --database=vmail --table

@@ -1,0 +1,55 @@
+#!/bin/bash
+set -e
+
+echo "Adapt resources ..."
+find $resdir -type f -exec sed -i \
+   -e "s/mail.mysystems.tld/${fqdn}/g" -e "s/mysystems.tld/${domain}/g" \
+   -e "s/5.1.76.152/$(cat ~/ipv4.txt)/g" -e "s/2a00:f820:417::7647:b2c2/$(cat ~/ipv6.txt)/g" \
+   -e "s/\${vmailpasswd}/${vmailpasswd}/g" \
+   {} \;
+
+echo "Create user vmail ..."
+mkdir -p /var/vmail
+if adduser --quiet --disabled-login --disabled-password --home /var/vmail vmail; then
+   echo "Added user vmail."
+else
+   echo "User vmail already exists, skip."
+fi
+
+echo "Create directories ..."
+mkdir -p /var/vmail/mailboxes
+mkdir -p /var/vmail/sieve/global
+chown -R vmail /var/vmail
+chgrp -R vmail /var/vmail
+chmod -R 770 /var/vmail
+echo "Done."
+
+echo "Install dovecot ..."
+apt-get install --yes dovecot-core dovecot-imapd dovecot-lmtpd dovecot-mysql dovecot-sieve dovecot-managesieved
+echo "Stopping dovecot ..."
+systemctl stop dovecot
+
+echo "Removing (default) dovecot configuration ..."
+rm -r /etc/dovecot/*
+
+if [ -f /etc/dh.pem ]; then
+   echo "Diffie-Hellman keys already present, skip."
+else
+   echo "Generate Diffie-Hellman keys ..."
+   openssl dhparam -out /etc/dh.pem 4096
+fi
+echo ""
+
+echo "Installing new dovecot configuration ..."
+cat $resdir/dovecot.conf > /etc/dovecot/dovecot.conf
+cat $resdir/dovecot-sql.conf > /etc/dovecot/dovecot-sql.conf
+chmod 440 /etc/dovecot/dovecot-sql.conf
+cat $resdir/spam-global.sieve > /var/vmail/sieve/global/spam-global.sieve
+cat $resdir/learn-spam.sieve > /var/vmail/sieve/global/learn-spam.sieve
+cat $resdir/learn-ham.sieve > /var/vmail/sieve/global/learn-ham.sieve
+
+echo "Starting dovecot ..."
+systemctl start dovecot
+systemctl status dovecot
+
+echo "Done."

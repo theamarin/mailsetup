@@ -1,0 +1,10 @@
+## https://thomas-leister.de/mailserver-debian-stretch/
+
+user = vmail
+password = ${vmailpasswd}
+hosts = 127.0.0.1
+dbname = vmail
+#query = select concat(destination_username, '@', destination_domain) as destinations from aliases where source_username = '%u' and source_domain = '%d' and enabled = true;
+
+## Checks for user@domain, enable, catch-all
+query = SELECT a.destination FROM aliases a WHERE a.enabled = true AND a.domain = '%d' AND ( (a.catchall = false AND a.username = '%u') OR (  (SELECT b.id FROM aliases b WHERE b.enabled = false AND b.domain = '%d' AND b.catchall = '0' AND b.username = '%u') IS NULL AND a.catchall = true AND a.username = SUBSTRING_INDEX('%u', '.', 1)  ) ) ORDER BY a.catchall LIMIT 1

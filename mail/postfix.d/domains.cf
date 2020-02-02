@@ -1,0 +1,7 @@
+## https://thomas-leister.de/mailserver-debian-stretch/
+
+user = vmail
+password = ${vmailpasswd}
+hosts = 127.0.0.1
+dbname = vmail
+query = SELECT domain FROM domains WHERE domain='%s'

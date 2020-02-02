@@ -1,0 +1,40 @@
+#!/bin/bash
+set -e
+
+echo "Adapt resources ..."
+find $resdir -type f -exec sed -i \
+   -e "s/mail.mysystems.tld/${fqdn}/g" -e "s/mysystems.tld/${domain}/g" \
+   -e "s/5.1.76.152/$(cat ~/ipv4.txt)/g" -e "s/2a00:f820:417::7647:b2c2/$(cat ~/ipv6.txt)/g" \
+   -e "s/\${vmailpasswd}/${vmailpasswd}/g" \
+   {} \;
+
+echo "Install postfix ..."
+DEBIAN_FRONTEND=noninteractive apt-get install --yes postfix postfix-mysql
+
+echo "Stop postfix ..."
+systemctl stop postfix
+echo "Remove (default) configuration ..."
+rm -rf /etc/postfix/sasl
+rm -f /etc/postfix/master.cf /etc/postfix/main.cf.proto /etc/postfix/master.cf.proto
+
+echo "Create new configuration ..."
+cat $resdir/main.cf > /etc/postfix/main.cf
+cat $resdir/master.cf > /etc/postfix/master.cf
+cat $resdir/submission_header_cleanup > /etc/postfix/submission_header_cleanup
+mkdir -p /etc/postfix/sql
+cat $resdir/accounts.cf > /etc/postfix/sql/accounts.cf
+cat $resdir/aliases.cf > /etc/postfix/sql/aliases.cf
+cat $resdir/domains.cf > /etc/postfix/sql/domains.cf
+cat $resdir/recipient-access.cf > /etc/postfix/sql/recipient-access.cf
+cat $resdir/sender-login-maps.cf > /etc/postfix/sql/sender-login-maps.cf
+cat $resdir/tls-policy.cf > /etc/postfix/sql/tls-policy.cf
+chmod -R 640 /etc/postfix/sql
+
+
+touch /etc/postfix/without_ptr
+touch /etc/postfix/postscreen_access
+
+postmap /etc/postfix/without_ptr
+newaliases
+
+systemctl start postfix

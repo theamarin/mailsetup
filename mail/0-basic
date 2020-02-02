@@ -1,0 +1,50 @@
+#!/bin/bash
+set -e
+
+if [ -z "$hostname" ]; then
+	echo "hostname not set!"
+	exit 1
+fi
+if [ -z "$fqdn" ]; then
+	echo "fqdn not set!"
+	exit 1
+fi
+if [ -z "$domain" ]; then
+	echo "domain not set!"
+	exit 1
+fi
+
+echo "Update system ..."
+apt-get update
+apt-get upgrade
+
+echo "Set hostname ..."
+hostnamectl set-hostname --static $hostname
+
+echo "Set hosts ..."
+sed -i.bak "s/127.0.1.1 [^\s]* [^\s]*/127.0.1.1 $fqdn $hostname/g" /etc/hosts
+
+if [ "$(hostname)" != "$hostname" ]; then
+	echo "Setting hostname failed."
+	exit 1
+elif [ "$(hostname --fqdn)" != "$fqdn" ]; then
+	echo "Setting fqdn failed."
+	exit 1
+else
+	echo "Setting hostname and fqdn ok."
+fi
+
+echo "Get IP addresses ..."
+ips="$(hostname --all-ip-addresses)"
+for ip in ${ips[$@]}; do
+   if [ "$ip" != "${ip#*[0-9].[0-9]}" ]; then
+      echo "$ip" > /root/ipv4.txt
+      echo " * IPv4 $ip"
+   elif [ "$ip" != "${ip#*:[0-9a-fA-F]}" ]; then
+      echo "$ip" > /root/ipv6.txt
+      echo " * IPv6 $ip"
+   else
+      echo "Unrecognized IP format '$ip'"
+      exit 1
+   fi
+done

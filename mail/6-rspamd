@@ -1,0 +1,85 @@
+#!/bin/bash
+set -e
+
+RED='\033[0;31m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+function apt-install {
+	DEBIAN_FRONTEND=noninteractive apt-get install --yes "$@"
+}
+
+echo "Install rspamd ..."
+apt-install lsb-release wget
+
+wget -O- https://rspamd.com/apt-stable/gpg.key | apt-key add -
+echo "deb http://rspamd.com/apt-stable/ $(lsb_release -c -s) main" > /etc/apt/sources.list.d/rspamd.list
+echo "deb-src http://rspamd.com/apt-stable/ $(lsb_release -c -s) main" >> /etc/apt/sources.list.d/rspamd.list
+
+apt-get update
+apt-install rspamd
+
+echo "Stop rspamd ..."
+systemctl stop rspamd
+
+echo "Write new config ..."
+cat $resdir/options.inc > /etc/rspamd/local.d/options.inc
+cat $resdir/worker-normal.inc > /etc/rspamd/local.d/worker-normal.inc
+cat $resdir/worker-controller.inc > /etc/rspamd/local.d/worker-controller.inc
+cat $resdir/worker-proxy.inc > /etc/rspamd/local.d/worker-proxy.inc
+cat $resdir/logging.inc > /etc/rspamd/local.d/logging.ing
+cat $resdir/milter_headers.conf > /etc/rspamd/local.d/milter_headers.conf
+cat $resdir/classifier-bayes.conf > /etc/rspamd/local.d/classifier-bayes.conf
+
+echo "DKIM signing ..."
+mkdir -p /var/lib/rspamd/dkim/
+SELECTOR=$(date +"%Y")
+if [ -f /var/lib/rspamd/dkim/$SELECTOR.key ]; then
+   echo "Found existing DKIM key."
+else
+   echo "No existing DKIM key found, create a new DKIM key..."
+   # You might want to change the following line to 2048 bits, but this is unfortunately not supported by all DNS hosters.
+   rspamadm dkim_keygen -b 1024 -s $SELECTOR -k /var/lib/rspamd/dkim/$SELECTOR.key > /var/lib/rspamd/dkim/$SELECTOR.txt
+   chown -R _rspamd:_rspamd /var/lib/rspamd/dkim
+   chmod 440 /var/lib/rspamd/dkim/*
+fi
+
+echo -e "${RED}Place the following in DNS record of each domain:${NC}"
+echo -e "${CYAN}"
+cat /var/lib/rspamd/dkim/$SELECTOR.txt
+echo -e "${NC}${RED}"
+echo -e "Create a new TXT DNS entry named 20xx._domainkey (with current year)."
+echo -e "Use the string starting with ${CYAN}v=DKIM1${RED} and ending *before* ${CYAN}\" ) ;${RED}."
+echo -e "You may have to remove \" and line breaks."
+echo -e "${NC}"
+echo "Testing current DNS entry:"
+IFS=':' read -ra ADDR <<< "$domain:$add_domains"
+for i in "${ADDR[@]}"; do
+   if host -t txt $SELECTOR._domainkey.$i; then
+      echo -e "${CYAN}$i: The DNS entry is already set, please check contents manually.${NC}"
+   else
+      echo -e "${RED}$i: The DNS entry is not yet set or not yet broadcast.${NC}"
+   fi
+done
+echo ""
+
+
+cat > "/etc/rspamd/local.d/dkim_signing.conf" <<EOF
+path = "/var/lib/rspamd/dkim/\$selector.key";
+selector = "$SELECTOR";
+
+### Enable DKIM signing for alias sender addresses
+allow_username_mismatch = true;
+EOF
+
+ln -sf /etc/rspamd/local.d/dkim_signing.conf /etc/rspamd/local.d/arc.conf
+
+echo "Install redis-server ..."
+apt-install redis-server
+echo 'servers = "127.0.0.1";' > /etc/rspamd/local.d/redis.conf
+
+echo "Start rspamd ..."
+systemctl start rspamd
+systemctl status rspamd
+
+echo "Done."

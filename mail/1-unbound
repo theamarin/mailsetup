@@ -1,0 +1,33 @@
+#!/bin/bash
+set -e
+
+echo "Install DNS server unbound ..."
+apt-get --yes install unbound dnsutils
+unbound-anchor -a /var/lib/unbound/root.key
+chown unbound:unbound /var/lib/unbound/root.key
+systemctl restart unbound
+
+if dig @127.0.0.1 denic.de +short +dnssec; then
+   echo "Dig ok."
+else
+   echo "Cannot dig!"
+   exit 1
+fi
+
+echo "Install resolvconf ..."
+apt-get install resolvconf
+rs_string="nameserver 127.0.0.1"
+rs_file="/etc/resolvconf/resolv.conf.d/head"
+if grep -q "$rs_string" "$rs_file"; then
+   echo "$rs_string already set, skipping."
+else
+   echo "Adding $rs_string to $rs_file ..."
+   echo $rs_string >> $rs_file
+fi
+
+if [[ $(nslookup denic.de | grep Server) == Server:*127.0.0.1 ]]; then
+   echo "resolvconf lookup ok."
+else
+   echo "resolvconf lookup failed!"
+   exit 1
+fi
